@@ -5,7 +5,7 @@ use std::{
 
 use regex::Regex;
 
-static BUILTIN_CMDS: &'static [&'static str] = &["echo", "exit"];
+static BUILTIN_CMDS: &'static [&'static str] = &["echo", "exit", "type"];
 
 fn main() -> ExitCode {
     let exit_re: Regex = Regex::new(r"exit ([0-9]+)").unwrap();
