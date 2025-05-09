@@ -6,7 +6,7 @@ use std::{
 use regex::Regex;
 
 fn main() -> ExitCode {
-    let exit_rg: Regex = Regex::new(r"exit ([0-9]+)").unwrap();
+    let exit_re: Regex = Regex::new(r"exit ([0-9]+)").unwrap();
     let echo_re: Regex = Regex::new(r"echo (.+)").unwrap();
 
     loop {
@@ -16,7 +16,7 @@ fn main() -> ExitCode {
         // Wait for user input
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
-        if let Some(caps) = exit_rg.captures(&input) {
+        if let Some(caps) = exit_re.captures(&input) {
             return ExitCode::from(
                 caps[1]
                     .parse::<u8>()
