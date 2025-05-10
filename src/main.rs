@@ -55,7 +55,12 @@ fn split_path() -> Vec<PathBuf> {
     paths
 }
 
-fn handle_type_cmd(param: &str) {
+fn handle_type_cmd(param: Option<&str>) {
+    if param.is_none() {
+        return;
+    }
+
+    let param = param.unwrap();
     if BUILTIN_CMDS.contains(&param) {
         println!("{} is a shell builtin", param);
     } else if let Ok(Some(executable)) = is_executable(param) {
@@ -65,11 +70,25 @@ fn handle_type_cmd(param: &str) {
     }
 }
 
-fn main() -> ExitCode {
-    let exit_re: Regex = Regex::new(r"exit ([0-9]+)").unwrap();
-    let echo_re: Regex = Regex::new(r"echo (.+)").unwrap();
-    let type_re: Regex = Regex::new(r"type (.+)").unwrap();
+fn handle_echo_cmd(param: Option<(&str, &str)>) {
+    if let Some((_, s)) = param {
+        println!("{}", s);
+    } else {
+        println!("");
+    }
+}
 
+fn handle_exit_cmd(param: Option<&str>) -> ExitCode {
+    if param.is_none() {
+        ExitCode::SUCCESS
+    } else if let Ok(retval) = param.unwrap().parse::<u8>() {
+        ExitCode::from(retval)
+    } else {
+        ExitCode::FAILURE
+    }
+}
+
+fn main() -> ExitCode {
     loop {
         print!("$ ");
         io::stdout().flush().unwrap();
@@ -77,18 +96,12 @@ fn main() -> ExitCode {
         // Wait for user input
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
-        if let Some(caps) = exit_re.captures(&input) {
-            return ExitCode::from(
-                caps[1]
-                    .parse::<u8>()
-                    .expect("The regex already makes sure that this is a valid usize"),
-            );
-        } else if let Some(caps) = echo_re.captures(&input) {
-            println!("{}", caps[1].trim());
-        } else if let Some(caps) = type_re.captures(&input) {
-            handle_type_cmd(caps[1].trim());
-        } else {
-            println!("{}: command not found", input.trim());
+        if input.starts_with("exit ") || input.trim() == "exit" {
+            return handle_exit_cmd(input.split_ascii_whitespace().nth(1));
+        } else if input.starts_with("type ") || input.trim() == "type" {
+            handle_type_cmd(input.split_ascii_whitespace().nth(1));
+        } else if input.starts_with("echo ") || input.trim() == "echo" {
+            handle_echo_cmd(input.split_once(" "));
         }
     }
 }
