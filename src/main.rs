@@ -33,14 +33,13 @@ impl FromStr for CommandType {
 
 fn is_executable(cmd: &str) -> Result<Option<PathBuf>> {
     for path in split_path() {
-        for f in fs::read_dir(&path).context("Directory in PATH cannot be read")? {
-            if f?
-                .path()
-                .to_str()
-                .expect("File should be a UTF-8 valid string")
-                .ends_with(cmd)
-            {
-                return Ok(Some(path));
+        if !fs::exists(&path).unwrap() {
+            continue;
+        }
+        for entry in fs::read_dir(&path)? {
+            let entry = entry?;
+            if cmd == entry.file_name().to_str().unwrap() {
+                return Ok(Some(entry.path()));
             }
         }
     }
