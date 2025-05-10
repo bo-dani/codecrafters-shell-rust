@@ -112,7 +112,7 @@ fn main() -> ExitCode {
                 if let Ok(Some(_)) = get_executable_path(cmd) {
                     Command::new(cmd)
                         .args(args.collect::<Vec<&str>>())
-                        .spawn()
+                        .status()
                         .expect("failed to execute process");
                 } else {
                     println!("{}: command not found", cmd);
