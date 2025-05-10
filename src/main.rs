@@ -1,7 +1,8 @@
 use anyhow::Result;
 use nom::branch::alt;
 use nom::bytes::complete::{is_not, tag, take_while1};
-use nom::character::complete::space0;
+use nom::character::complete::space1;
+use nom::combinator::map;
 use nom::multi::many0;
 use nom::sequence::delimited;
 use nom::{IResult, Parser};
@@ -20,6 +21,12 @@ static BUILTIN_CMDS: &'static [&'static str] = &["echo", "exit", "type"];
 enum CommandType {
     Builtin,
     Executable(PathBuf),
+}
+
+#[derive(Debug)]
+enum Token {
+    Arg(String),
+    Whitespace,
 }
 
 impl FromStr for CommandType {
@@ -60,8 +67,30 @@ fn split_path() -> Vec<PathBuf> {
     paths
 }
 
+fn process_tokens(tokens: Vec<Token>) -> Vec<String> {
+    let mut p: Vec<String> = Vec::new();
+    let mut sb: String = String::new();
+    for token in tokens {
+        match token {
+            Token::Arg(t) => {
+                sb.push_str(&t);
+            }
+            Token::Whitespace => {
+                if !sb.is_empty() {
+                    p.push(sb.clone());
+                    sb.clear();
+                }
+            }
+        }
+    }
+    if !sb.is_empty() {
+        p.push(sb);
+    }
+    return p;
+}
+
 /// Handle the shell-builtin `type` command.
-fn handle_type_cmd(args: Vec<&str>) {
+fn handle_type_cmd(args: Vec<String>) {
     if args.len() != 1 {
         // TODO Print out error to user.
         return;
@@ -76,12 +105,12 @@ fn handle_type_cmd(args: Vec<&str>) {
 }
 
 /// Handle the shell-builtin `echo` command.
-fn handle_echo_cmd(args: Vec<&str>) {
+fn handle_echo_cmd(args: Vec<String>) {
     println!("{}", args.join(" "));
 }
 
 /// Handle the shell-builtin `exit` command.
-fn handle_exit_cmd(args: Vec<&str>) -> ExitCode {
+fn handle_exit_cmd(args: Vec<String>) -> ExitCode {
     if args.is_empty() {
         ExitCode::SUCCESS
     } else if let Ok(retval) = args[0].parse::<u8>() {
@@ -99,12 +128,18 @@ fn parse_single_quoted_arg(input: &str) -> IResult<&str, &str> {
     delimited(tag("'"), is_not("'"), tag("'")).parse(input)
 }
 
-fn parse_args(input: &str) -> IResult<&str, Vec<&str>> {
-    many0(delimited(
-        space0,
-        alt((parse_single_quoted_arg, parse_unquoted_arg)),
-        space0,
-    ))
+fn parse_args(input: &str) -> IResult<&str, Vec<Token>> {
+    many0(alt((
+        map(space1, |_| Token::Whitespace),
+        alt((
+            map(parse_single_quoted_arg, |s: &str| {
+                Token::Arg(String::from_str(s).unwrap())
+            }),
+            map(parse_unquoted_arg, |s: &str| {
+                Token::Arg(String::from_str(s).unwrap())
+            }),
+        )),
+    )))
     .parse(input)
 }
 
@@ -112,7 +147,7 @@ fn parse_command(input: &str) -> IResult<&str, &str> {
     take_while1(|c: char| !c.is_whitespace())(input)
 }
 
-fn parse_input(input: &str) -> IResult<&str, (&str, Vec<&str>)> {
+fn parse_input(input: &str) -> IResult<&str, (&str, Vec<Token>)> {
     let (input, cmd) = parse_command(input)?;
     let (input, args) = parse_args(input)?;
     Ok((input, (cmd, args)))
@@ -128,6 +163,7 @@ fn main() -> ExitCode {
         io::stdin().read_line(&mut input).unwrap();
 
         let (_, (cmd, args)) = parse_input(&input).unwrap();
+        let args = process_tokens(args);
         match cmd {
             "exit" => {
                 return handle_exit_cmd(args);
