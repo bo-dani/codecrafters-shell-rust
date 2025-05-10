@@ -26,6 +26,7 @@ enum CommandType {
 #[derive(Debug)]
 enum Token {
     Arg(String),
+    DoubleQuotedArg(String),
     Whitespace,
 }
 
@@ -72,7 +73,7 @@ fn process_tokens(tokens: Vec<Token>) -> Vec<String> {
     let mut sb: String = String::new();
     for token in tokens {
         match token {
-            Token::Arg(t) => {
+            Token::Arg(t) | Token::DoubleQuotedArg(t) => {
                 sb.push_str(&t);
             }
             Token::Whitespace => {
@@ -128,12 +129,19 @@ fn parse_single_quoted_arg(input: &str) -> IResult<&str, &str> {
     delimited(tag("'"), is_not("'"), tag("'")).parse(input)
 }
 
+fn parse_double_quoted_arg(input: &str) -> IResult<&str, &str> {
+    delimited(tag("\""), is_not("\""), tag("\"")).parse(input)
+}
+
 fn parse_args(input: &str) -> IResult<&str, Vec<Token>> {
     many0(alt((
         map(space1, |_| Token::Whitespace),
         alt((
             map(parse_single_quoted_arg, |s: &str| {
                 Token::Arg(String::from_str(s).unwrap())
+            }),
+            map(parse_double_quoted_arg, |s: &str| {
+                Token::DoubleQuotedArg(String::from_str(s).unwrap())
             }),
             map(parse_unquoted_arg, |s: &str| {
                 Token::Arg(String::from_str(s).unwrap())
