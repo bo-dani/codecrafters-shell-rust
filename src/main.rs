@@ -1,4 +1,10 @@
 use anyhow::Result;
+use nom::branch::alt;
+use nom::bytes::complete::{is_not, tag, take_while1};
+use nom::character::complete::space0;
+use nom::multi::many0;
+use nom::sequence::delimited;
+use nom::{IResult, Parser};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -54,32 +60,62 @@ fn split_path() -> Vec<PathBuf> {
     paths
 }
 
-fn handle_type_cmd(arg: Option<&str>) {
-    if arg.is_none() {
+/// Handle the shell-builtin `type` command.
+fn handle_type_cmd(args: Vec<&str>) {
+    if args.len() != 1 {
+        // TODO Print out error to user.
         return;
     }
 
-    let arg = arg.unwrap();
-
-    match CommandType::from_str(arg) {
-        Ok(CommandType::Builtin) => println!("{} is a shell builtin", arg),
-        Ok(CommandType::Executable(path)) => println!("{} is {}", arg, path.to_str().unwrap()),
-        Err(_) => println!("{}: not found", arg),
+    let arg = &args[0];
+    match CommandType::from_str(&arg) {
+        Ok(CommandType::Builtin) => println!("{} is a shell builtin", &arg),
+        Ok(CommandType::Executable(path)) => println!("{} is {}", &arg, path.to_str().unwrap()),
+        Err(_) => println!("{}: not found", &arg),
     }
 }
 
-fn handle_echo_cmd(arg: &str) {
-    println!("{}", arg);
+/// Handle the shell-builtin `echo` command.
+fn handle_echo_cmd(args: Vec<&str>) {
+    println!("{}", args.join(" "));
 }
 
-fn handle_exit_cmd(arg: Option<&str>) -> ExitCode {
-    if arg.is_none() {
+/// Handle the shell-builtin `exit` command.
+fn handle_exit_cmd(args: Vec<&str>) -> ExitCode {
+    if args.is_empty() {
         ExitCode::SUCCESS
-    } else if let Ok(retval) = arg.unwrap().parse::<u8>() {
+    } else if let Ok(retval) = args[0].parse::<u8>() {
         ExitCode::from(retval)
     } else {
         ExitCode::FAILURE
     }
+}
+
+fn parse_unquoted_arg(input: &str) -> IResult<&str, &str> {
+    take_while1(|c: char| !c.is_whitespace())(input)
+}
+
+fn parse_single_quoted_arg(input: &str) -> IResult<&str, &str> {
+    delimited(tag("'"), is_not("'"), tag("'")).parse(input)
+}
+
+fn parse_args(input: &str) -> IResult<&str, Vec<&str>> {
+    many0(delimited(
+        space0,
+        alt((parse_single_quoted_arg, parse_unquoted_arg)),
+        space0,
+    ))
+    .parse(input)
+}
+
+fn parse_command(input: &str) -> IResult<&str, &str> {
+    take_while1(|c: char| !c.is_whitespace())(input)
+}
+
+fn parse_input(input: &str) -> IResult<&str, (&str, Vec<&str>)> {
+    let (input, cmd) = parse_command(input)?;
+    let (input, args) = parse_args(input)?;
+    Ok((input, (cmd, args)))
 }
 
 fn main() -> ExitCode {
@@ -91,19 +127,16 @@ fn main() -> ExitCode {
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
 
-        let mut parts = input.trim().split_whitespace();
-        let cmd = parts.next().unwrap_or("");
-        let mut args = parts;
-
+        let (_, (cmd, args)) = parse_input(&input).unwrap();
         match cmd {
             "exit" => {
-                return handle_exit_cmd(args.nth(0));
+                return handle_exit_cmd(args);
             }
             "type" => {
-                handle_type_cmd(args.nth(0));
+                handle_type_cmd(args);
             }
             "echo" => {
-                handle_echo_cmd(args.collect::<Vec<&str>>().join(" ").trim());
+                handle_echo_cmd(args);
             }
             "" => {
                 continue;
@@ -111,7 +144,7 @@ fn main() -> ExitCode {
             _ => {
                 if let Ok(Some(_)) = get_executable_path(cmd) {
                     Command::new(cmd)
-                        .args(args.collect::<Vec<&str>>())
+                        .args(args)
                         .status()
                         .expect("failed to execute process");
                 } else {
