@@ -1,5 +1,4 @@
-use anyhow::{Context, Result};
-use regex::Regex;
+use anyhow::Result;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -12,7 +11,6 @@ use std::{
 static BUILTIN_CMDS: &'static [&'static str] = &["echo", "exit", "type"];
 
 enum CommandType {
-    Unknown,
     Builtin,
     Executable(PathBuf),
 }
@@ -26,7 +24,7 @@ impl FromStr for CommandType {
         } else if let Ok(Some(executable)) = is_executable(cmd) {
             Ok(CommandType::Executable(executable))
         } else {
-            Ok(CommandType::Unknown)
+            Err(())
         }
     }
 }
@@ -61,12 +59,11 @@ fn handle_type_cmd(param: Option<&str>) {
     }
 
     let param = param.unwrap();
-    if BUILTIN_CMDS.contains(&param) {
-        println!("{} is a shell builtin", param);
-    } else if let Ok(Some(executable)) = is_executable(param) {
-        println!("{} is {}", param, executable.to_str().unwrap());
-    } else {
-        println!("{}: not found", param);
+
+    match CommandType::from_str(param) {
+        Ok(CommandType::Builtin) => println!("{} is a shell builtin", param),
+        Ok(CommandType::Executable(path)) => println!("{} is {}", param, path.to_str().unwrap()),
+        Err(_) => println!("{}: not found", param),
     }
 }
 
