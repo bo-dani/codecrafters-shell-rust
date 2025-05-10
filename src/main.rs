@@ -2,6 +2,7 @@ use anyhow::Result;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 use std::str::FromStr;
 use std::{
     io::{self, Write},
@@ -21,7 +22,7 @@ impl FromStr for CommandType {
     fn from_str(cmd: &str) -> Result<CommandType, Self::Err> {
         if BUILTIN_CMDS.contains(&cmd) {
             Ok(CommandType::Builtin)
-        } else if let Ok(Some(executable)) = is_executable(cmd) {
+        } else if let Ok(Some(executable)) = get_executable_path(cmd) {
             Ok(CommandType::Executable(executable))
         } else {
             Err(())
@@ -29,7 +30,7 @@ impl FromStr for CommandType {
     }
 }
 
-fn is_executable(cmd: &str) -> Result<Option<PathBuf>> {
+fn get_executable_path(cmd: &str) -> Result<Option<PathBuf>> {
     for path in split_path() {
         if !fs::exists(&path).unwrap() {
             continue;
@@ -53,32 +54,28 @@ fn split_path() -> Vec<PathBuf> {
     paths
 }
 
-fn handle_type_cmd(param: Option<&str>) {
-    if param.is_none() {
+fn handle_type_cmd(arg: Option<&str>) {
+    if arg.is_none() {
         return;
     }
 
-    let param = param.unwrap();
+    let arg = arg.unwrap();
 
-    match CommandType::from_str(param) {
-        Ok(CommandType::Builtin) => println!("{} is a shell builtin", param),
-        Ok(CommandType::Executable(path)) => println!("{} is {}", param, path.to_str().unwrap()),
-        Err(_) => println!("{}: not found", param),
+    match CommandType::from_str(arg) {
+        Ok(CommandType::Builtin) => println!("{} is a shell builtin", arg),
+        Ok(CommandType::Executable(path)) => println!("{} is {}", arg, path.to_str().unwrap()),
+        Err(_) => println!("{}: not found", arg),
     }
 }
 
-fn handle_echo_cmd(param: Option<(&str, &str)>) {
-    if let Some((_, s)) = param {
-        println!("{}", s);
-    } else {
-        println!("");
-    }
+fn handle_echo_cmd(arg: &str) {
+    println!("{}", arg);
 }
 
-fn handle_exit_cmd(param: Option<&str>) -> ExitCode {
-    if param.is_none() {
+fn handle_exit_cmd(arg: Option<&str>) -> ExitCode {
+    if arg.is_none() {
         ExitCode::SUCCESS
-    } else if let Ok(retval) = param.unwrap().parse::<u8>() {
+    } else if let Ok(retval) = arg.unwrap().parse::<u8>() {
         ExitCode::from(retval)
     } else {
         ExitCode::FAILURE
@@ -93,12 +90,34 @@ fn main() -> ExitCode {
         // Wait for user input
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
-        if input.starts_with("exit ") || input.trim() == "exit" {
-            return handle_exit_cmd(input.split_ascii_whitespace().nth(1));
-        } else if input.starts_with("type ") || input.trim() == "type" {
-            handle_type_cmd(input.split_ascii_whitespace().nth(1));
-        } else if input.starts_with("echo ") || input.trim() == "echo" {
-            handle_echo_cmd(input.split_once(" "));
+
+        let mut parts = input.trim().split_whitespace();
+        let cmd = parts.next().unwrap_or("");
+        let mut args = parts;
+
+        match cmd {
+            "exit" => {
+                return handle_exit_cmd(args.nth(0));
+            }
+            "type" => {
+                handle_type_cmd(args.nth(0));
+            }
+            "echo" => {
+                handle_echo_cmd(args.collect::<Vec<&str>>().join(" ").trim());
+            }
+            "" => {
+                continue;
+            }
+            _ => {
+                if let Ok(Some(_)) = get_executable_path(cmd) {
+                    Command::new(cmd)
+                        .args(args.collect::<Vec<&str>>())
+                        .spawn()
+                        .expect("failed to execute process");
+                } else {
+                    println!("{}: command not found", cmd);
+                }
+            }
         }
     }
 }
