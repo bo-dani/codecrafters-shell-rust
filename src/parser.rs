@@ -103,6 +103,5 @@ fn parse_command(input: &str) -> IResult<&str, &str> {
 pub fn parse_input(input: &str) -> IResult<&str, (&str, Vec<String>)> {
     let (input, cmd) = parse_command(input)?;
     let (input, args) = parse_args(input)?;
-    println!("{:?}", args);
     Ok((input, (cmd, process_tokens(args))))
 }
