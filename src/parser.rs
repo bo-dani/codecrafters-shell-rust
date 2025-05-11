@@ -16,6 +16,10 @@ enum Token {
 }
 
 fn escape_unquoted_arg(arg: &str) -> String {
+    if !arg.contains("\\") {
+        return String::from_str(arg).unwrap();
+    }
+
     let mut escaped = String::new();
     let mut should_escape = false;
     for (idx, (cur, next)) in arg.chars().into_iter().tuple_windows().enumerate() {
@@ -94,6 +98,5 @@ fn parse_command(input: &str) -> IResult<&str, &str> {
 pub fn parse_input(input: &str) -> IResult<&str, (&str, Vec<String>)> {
     let (input, cmd) = parse_command(input)?;
     let (input, args) = parse_args(input)?;
-    println!("{:?}", args);
     Ok((input, (cmd, process_tokens(args))))
 }
