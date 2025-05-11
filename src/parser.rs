@@ -39,6 +39,7 @@ fn escape_unquoted_arg(arg: &str) -> String {
 fn process_tokens(tokens: Vec<Token>) -> Vec<String> {
     let mut p: Vec<String> = Vec::new();
     let mut sb: String = String::new();
+    let mut first_whitespace = true;
     for token in tokens {
         match token {
             Token::DoubleQuotedArg(t) => {
@@ -48,10 +49,11 @@ fn process_tokens(tokens: Vec<Token>) -> Vec<String> {
                 sb.push_str(&escape_unquoted_arg(&t));
             }
             Token::Whitespace => {
-                if !sb.is_empty() {
+                if !first_whitespace {
                     p.push(sb.clone());
                     sb.clear();
                 }
+                first_whitespace = false;
             }
         }
     }
