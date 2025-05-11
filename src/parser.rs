@@ -25,13 +25,16 @@ fn escape_unquoted_arg(arg: &str) -> String {
     for (idx, (cur, next)) in arg.chars().into_iter().tuple_windows().enumerate() {
         if cur == '\\' && !should_escape {
             should_escape = true;
-            if idx == arg.len() - 2 {
-                escaped.push(next);
-            }
-            continue;
         }
+
+        if !should_escape {
+            escaped.push(cur);
+        }
+
         should_escape = false;
-        escaped.push(cur);
+        if idx == arg.len() - 2 {
+            escaped.push(next);
+        }
     }
     escaped
 }
@@ -100,5 +103,6 @@ fn parse_command(input: &str) -> IResult<&str, &str> {
 pub fn parse_input(input: &str) -> IResult<&str, (&str, Vec<String>)> {
     let (input, cmd) = parse_command(input)?;
     let (input, args) = parse_args(input)?;
+    println!("{:?}", args);
     Ok((input, (cmd, process_tokens(args))))
 }
