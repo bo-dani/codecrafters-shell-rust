@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use nom::branch::alt;
 use nom::bytes::complete::{is_not, tag, take_while1};
 use nom::character::complete::space1;
@@ -14,6 +15,23 @@ enum Token {
     Whitespace,
 }
 
+fn escape_unquoted_arg(arg: &str) -> String {
+    let mut escaped = String::new();
+    let mut should_escape = false;
+    for (idx, (cur, next)) in arg.chars().into_iter().tuple_windows().enumerate() {
+        if cur == '\\' && !should_escape {
+            should_escape = true;
+            if idx == arg.len() - 2 {
+                escaped.push(next);
+            }
+            continue;
+        }
+        should_escape = false;
+        escaped.push(cur);
+    }
+    escaped
+}
+
 fn process_tokens(tokens: Vec<Token>) -> Vec<String> {
     let mut p: Vec<String> = Vec::new();
     let mut sb: String = String::new();
@@ -23,8 +41,7 @@ fn process_tokens(tokens: Vec<Token>) -> Vec<String> {
                 sb.push_str(&t);
             }
             Token::Arg(t) => {
-                let escaped = t.replace("\\", "");
-                sb.push_str(&escaped);
+                sb.push_str(&escape_unquoted_arg(&t));
             }
             Token::Whitespace => {
                 if !sb.is_empty() {
