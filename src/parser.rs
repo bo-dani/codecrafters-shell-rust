@@ -1,18 +1,21 @@
 use itertools::Itertools;
 use nom::branch::alt;
-use nom::bytes::complete::{is_not, tag, take_while1};
+use nom::bytes::complete::{is_not, tag, take, take_while1};
 use nom::character::complete::space1;
 use nom::combinator::map;
 use nom::multi::many0;
 use nom::sequence::delimited;
+use nom::sequence::preceded;
 use nom::{IResult, Parser};
 use std::str::FromStr;
 
 #[derive(Debug)]
 enum Token {
     Arg(String),
+    SingleQuotedArg(String),
     DoubleQuotedArg(String),
     Whitespace,
+    EscapedCharacter(char),
 }
 
 fn escape_unquoted_arg(arg: &str) -> String {
@@ -45,6 +48,9 @@ fn process_tokens(tokens: Vec<Token>) -> Vec<String> {
     let mut first_whitespace = true;
     for token in tokens {
         match token {
+            Token::SingleQuotedArg(t) => {
+                sb.push_str(&t);
+            }
             Token::DoubleQuotedArg(t) => {
                 sb.push_str(&t);
             }
@@ -58,6 +64,9 @@ fn process_tokens(tokens: Vec<Token>) -> Vec<String> {
                 }
                 first_whitespace = false;
             }
+            Token::EscapedCharacter(c) => {
+                sb.push(c);
+            }
         }
     }
     if !sb.is_empty() {
@@ -67,7 +76,7 @@ fn process_tokens(tokens: Vec<Token>) -> Vec<String> {
 }
 
 fn parse_unquoted_arg(input: &str) -> IResult<&str, &str> {
-    take_while1(|c: char| !c.is_whitespace())(input)
+    take_while1(|c: char| !c.is_whitespace() && c != '\\')(input)
 }
 
 fn parse_single_quoted_arg(input: &str) -> IResult<&str, &str> {
@@ -78,18 +87,25 @@ fn parse_double_quoted_arg(input: &str) -> IResult<&str, &str> {
     delimited(tag("\""), is_not("\""), tag("\"")).parse(input)
 }
 
+fn parse_escaped_char(input: &str) -> IResult<&str, &str> {
+    preceded(tag("\\"), take(1usize)).parse(input)
+}
+
 fn parse_args(input: &str) -> IResult<&str, Vec<Token>> {
     many0(alt((
         map(space1, |_| Token::Whitespace),
         alt((
             map(parse_single_quoted_arg, |s: &str| {
-                Token::Arg(String::from_str(s).unwrap())
+                Token::SingleQuotedArg(String::from_str(s).unwrap())
             }),
             map(parse_double_quoted_arg, |s: &str| {
                 Token::DoubleQuotedArg(String::from_str(s).unwrap())
             }),
             map(parse_unquoted_arg, |s: &str| {
                 Token::Arg(String::from_str(s).unwrap())
+            }),
+            map(parse_escaped_char, |s: &str| {
+                Token::EscapedCharacter(s.chars().into_iter().next().unwrap())
             }),
         )),
     )))
@@ -103,5 +119,18 @@ fn parse_command(input: &str) -> IResult<&str, &str> {
 pub fn parse_input(input: &str) -> IResult<&str, (&str, Vec<String>)> {
     let (input, cmd) = parse_command(input)?;
     let (input, args) = parse_args(input)?;
+    println!("{:?}", args);
     Ok((input, (cmd, process_tokens(args))))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_unquoted_arg() {
+        assert_eq!(parse_unquoted_arg("cat "), Ok(("", "cat")));
+        assert_eq!(parse_unquoted_arg("cat\\ "), Ok(("", "cat")));
+        assert_eq!(parse_unquoted_arg("cat\\ hello"), Ok(("hello", "cat")));
+    }
 }
