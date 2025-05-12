@@ -1,9 +1,12 @@
 use itertools::Itertools;
 use nom::branch::alt;
 use nom::bytes::complete::{is_not, tag, take, take_while1};
+use nom::character::complete::char;
 use nom::character::complete::space1;
 use nom::combinator::map;
+use nom::combinator::recognize;
 use nom::multi::many0;
+use nom::multi::many0_count;
 use nom::sequence::delimited;
 use nom::sequence::preceded;
 use nom::{IResult, Parser};
@@ -42,6 +45,17 @@ fn escape_unquoted_arg(arg: &str) -> String {
     escaped
 }
 
+fn escape_double_quoted_arg(arg: &str) -> String {
+    if !arg.contains("\\") {
+        return String::from_str(arg).unwrap();
+    }
+
+    arg.replace("\\\\", "\\")
+        .replace("\\\"", "\"")
+        .replace("\\\\n", "\n")
+        .replace("\\$", "$")
+}
+
 fn process_tokens(tokens: Vec<Token>) -> Vec<String> {
     let mut p: Vec<String> = Vec::new();
     let mut sb: String = String::new();
@@ -52,7 +66,7 @@ fn process_tokens(tokens: Vec<Token>) -> Vec<String> {
                 sb.push_str(&t);
             }
             Token::DoubleQuotedArg(t) => {
-                sb.push_str(&t);
+                sb.push_str(&escape_double_quoted_arg(&t));
             }
             Token::Arg(t) => {
                 sb.push_str(&escape_unquoted_arg(&t));
@@ -84,7 +98,15 @@ fn parse_single_quoted_arg(input: &str) -> IResult<&str, &str> {
 }
 
 fn parse_double_quoted_arg(input: &str) -> IResult<&str, &str> {
-    delimited(tag("\""), is_not("\""), tag("\"")).parse(input)
+    delimited(
+        char('"'),
+        recognize(many0_count(alt((
+            is_not("\\\""),
+            preceded(char('\\'), take(1usize)),
+        )))),
+        char('"'),
+    )
+    .parse(input)
 }
 
 fn parse_escaped_char(input: &str) -> IResult<&str, &str> {
@@ -119,6 +141,7 @@ fn parse_command(input: &str) -> IResult<&str, &str> {
 pub fn parse_input(input: &str) -> IResult<&str, (&str, Vec<String>)> {
     let (input, cmd) = parse_command(input)?;
     let (input, args) = parse_args(input)?;
+    println!("{:?}", args);
     Ok((input, (cmd, process_tokens(args))))
 }
 
