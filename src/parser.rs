@@ -89,15 +89,15 @@ fn process_tokens(tokens: Vec<Token>) -> Vec<String> {
     return p;
 }
 
-fn parse_unquoted_arg(input: &str) -> IResult<&str, &str> {
+fn parse_unquoted_input(input: &str) -> IResult<&str, &str> {
     take_while1(|c: char| !c.is_whitespace() && c != '\\')(input)
 }
 
-fn parse_single_quoted_arg(input: &str) -> IResult<&str, &str> {
+fn parse_single_quoted_input(input: &str) -> IResult<&str, &str> {
     delimited(tag("'"), is_not("'"), tag("'")).parse(input)
 }
 
-fn parse_double_quoted_arg(input: &str) -> IResult<&str, &str> {
+fn parse_double_quoted_input(input: &str) -> IResult<&str, &str> {
     delimited(
         char('"'),
         recognize(many0_count(alt((
@@ -117,13 +117,13 @@ fn parse_args(input: &str) -> IResult<&str, Vec<Token>> {
     many0(alt((
         map(space1, |_| Token::Whitespace),
         alt((
-            map(parse_single_quoted_arg, |s: &str| {
+            map(parse_single_quoted_input, |s: &str| {
                 Token::SingleQuotedArg(String::from_str(s).unwrap())
             }),
-            map(parse_double_quoted_arg, |s: &str| {
+            map(parse_double_quoted_input, |s: &str| {
                 Token::DoubleQuotedArg(String::from_str(s).unwrap())
             }),
-            map(parse_unquoted_arg, |s: &str| {
+            map(parse_unquoted_input, |s: &str| {
                 Token::Arg(String::from_str(s).unwrap())
             }),
             map(parse_escaped_char, |s: &str| {
@@ -135,7 +135,12 @@ fn parse_args(input: &str) -> IResult<&str, Vec<Token>> {
 }
 
 fn parse_command(input: &str) -> IResult<&str, &str> {
-    take_while1(|c: char| !c.is_whitespace())(input)
+    alt((
+        parse_single_quoted_input,
+        parse_double_quoted_input,
+        parse_unquoted_input,
+    ))
+    .parse(input)
 }
 
 pub fn parse_input(input: &str) -> IResult<&str, (&str, Vec<String>)> {
@@ -149,9 +154,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_unquoted_arg() {
-        assert_eq!(parse_unquoted_arg("cat "), Ok(("", "cat")));
-        assert_eq!(parse_unquoted_arg("cat\\ "), Ok(("", "cat")));
-        assert_eq!(parse_unquoted_arg("cat\\ hello"), Ok(("hello", "cat")));
+    fn test_parse_unquoted_input() {
+        assert_eq!(parse_unquoted_input("cat "), Ok(("", "cat")));
+        assert_eq!(parse_unquoted_input("cat\\ "), Ok(("", "cat")));
+        assert_eq!(parse_unquoted_input("cat\\ hello"), Ok(("hello", "cat")));
     }
 }

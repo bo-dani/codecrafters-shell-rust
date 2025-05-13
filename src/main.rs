@@ -96,28 +96,29 @@ fn main() -> ExitCode {
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
 
-        let (_, (cmd, args)) = parser::parse_input(&input).unwrap();
-        match cmd {
-            "exit" => {
-                return handle_exit_cmd(args);
-            }
-            "type" => {
-                handle_type_cmd(args);
-            }
-            "echo" => {
-                handle_echo_cmd(args);
-            }
-            "" => {
-                continue;
-            }
-            _ => {
-                if let Ok(Some(_)) = get_executable_path(cmd) {
-                    Command::new(cmd)
-                        .args(args)
-                        .status()
-                        .expect("failed to execute process");
-                } else {
-                    println!("{}: command not found", cmd);
+        if let Ok((_, (cmd, args))) = parser::parse_input(&input) {
+            match cmd {
+                "exit" => {
+                    return handle_exit_cmd(args);
+                }
+                "type" => {
+                    handle_type_cmd(args);
+                }
+                "echo" => {
+                    handle_echo_cmd(args);
+                }
+                "" => {
+                    continue;
+                }
+                _ => {
+                    if let Ok(Some(_)) = get_executable_path(cmd) {
+                        Command::new(cmd)
+                            .args(args)
+                            .status()
+                            .expect("failed to execute process");
+                    } else {
+                        println!("{}: command not found", cmd);
+                    }
                 }
             }
         }
