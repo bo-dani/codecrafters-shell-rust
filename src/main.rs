@@ -96,7 +96,7 @@ fn main() -> ExitCode {
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
 
-        if let Ok((_, (cmd, args))) = parser::parse_input(&input) {
+        if let Ok((redirection, (cmd, args))) = parser::parse_input(&input) {
             match cmd {
                 "exit" => {
                     return handle_exit_cmd(args);

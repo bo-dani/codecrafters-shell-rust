@@ -113,23 +113,30 @@ fn parse_escaped_char(input: &str) -> IResult<&str, &str> {
     preceded(tag("\\"), take(1usize)).parse(input)
 }
 
+fn parse_redirection(input: &str) -> IResult<&str, &str> {
+    tag(">")(input)
+}
+
 fn parse_args(input: &str) -> IResult<&str, Vec<Token>> {
     many0(alt((
         map(space1, |_| Token::Whitespace),
-        alt((
-            map(parse_single_quoted_input, |s: &str| {
-                Token::SingleQuotedArg(String::from_str(s).unwrap())
-            }),
-            map(parse_double_quoted_input, |s: &str| {
-                Token::DoubleQuotedArg(String::from_str(s).unwrap())
-            }),
-            map(parse_unquoted_input, |s: &str| {
-                Token::Arg(String::from_str(s).unwrap())
-            }),
-            map(parse_escaped_char, |s: &str| {
-                Token::EscapedCharacter(s.chars().into_iter().next().unwrap())
-            }),
-        )),
+        map(parse_single_quoted_input, |s: &str| {
+            Token::SingleQuotedArg(String::from_str(s).expect("The string cannot be ill-formatted"))
+        }),
+        map(parse_double_quoted_input, |s: &str| {
+            Token::DoubleQuotedArg(String::from_str(s).expect("The string cannot be ill-formatted"))
+        }),
+        map(parse_unquoted_input, |s: &str| {
+            Token::Arg(String::from_str(s).expect("The string cannot be ill-formatted"))
+        }),
+        map(parse_escaped_char, |s: &str| {
+            Token::EscapedCharacter(
+                s.chars()
+                    .into_iter()
+                    .next()
+                    .expect("The parser returns two characters when it successful"),
+            )
+        }),
     )))
     .parse(input)
 }
@@ -146,6 +153,7 @@ fn parse_command(input: &str) -> IResult<&str, &str> {
 pub fn parse_input(input: &str) -> IResult<&str, (&str, Vec<String>)> {
     let (input, cmd) = parse_command(input)?;
     let (input, args) = parse_args(input)?;
+    println!("{:?}", args);
     Ok((input, (cmd, process_tokens(args))))
 }
 
