@@ -1,3 +1,4 @@
+use anyhow::bail;
 use itertools::Itertools;
 use nom::branch::alt;
 use nom::bytes::complete::{is_not, tag, take, take_while1};
@@ -5,12 +6,14 @@ use nom::character::complete::char;
 use nom::character::complete::space1;
 use nom::combinator::map;
 use nom::combinator::recognize;
-use nom::multi::many0;
 use nom::multi::many0_count;
 use nom::sequence::delimited;
 use nom::sequence::preceded;
 use nom::{IResult, Parser};
+use regex::Regex;
 use std::str::FromStr;
+
+static REDIRECTION_PAT: &str = r"^(\d*)>\s*(.+)";
 
 #[derive(Debug)]
 enum Token {
@@ -19,6 +22,13 @@ enum Token {
     DoubleQuotedArg(String),
     Whitespace,
     EscapedCharacter(char),
+}
+
+#[derive(Debug)]
+pub enum Redirection {
+    Stdin(String),
+    Stdout(String),
+    Stderr(String),
 }
 
 fn escape_unquoted_arg(arg: &str) -> String {
@@ -56,7 +66,7 @@ fn escape_double_quoted_arg(arg: &str) -> String {
         .replace("\\$", "$")
 }
 
-fn process_tokens(tokens: Vec<Token>) -> Vec<String> {
+fn process_args(tokens: Vec<Token>) -> Vec<String> {
     let mut p: Vec<String> = Vec::new();
     let mut sb: String = String::new();
     let mut first_whitespace = true;
@@ -113,32 +123,64 @@ fn parse_escaped_char(input: &str) -> IResult<&str, &str> {
     preceded(tag("\\"), take(1usize)).parse(input)
 }
 
-fn parse_redirection(input: &str) -> IResult<&str, &str> {
-    tag(">")(input)
+fn parse_redirection(input: &str) -> Option<Redirection> {
+    let input = input.trim();
+    if input.is_empty() {
+        return None;
+    }
+
+    let re = Regex::new(REDIRECTION_PAT).unwrap();
+    if let Some(caps) = re.captures(input) {
+        println!("{:?}", caps);
+        let fdn = if caps.get(1).is_some() {
+            caps.get(1).unwrap().as_str()
+        } else {
+            "1"
+        };
+
+        let file = caps.get(2).unwrap().as_str();
+        match fdn {
+            "2" => {
+                return Some(Redirection::Stderr(file.to_string()));
+            }
+            _ => {
+                return Some(Redirection::Stdout(file.to_string()));
+            }
+        };
+    }
+    None
 }
 
 fn parse_args(input: &str) -> IResult<&str, Vec<Token>> {
-    many0(alt((
-        map(space1, |_| Token::Whitespace),
-        map(parse_single_quoted_input, |s: &str| {
-            Token::SingleQuotedArg(String::from_str(s).expect("The string cannot be ill-formatted"))
-        }),
-        map(parse_double_quoted_input, |s: &str| {
-            Token::DoubleQuotedArg(String::from_str(s).expect("The string cannot be ill-formatted"))
-        }),
-        map(parse_unquoted_input, |s: &str| {
-            Token::Arg(String::from_str(s).expect("The string cannot be ill-formatted"))
-        }),
-        map(parse_escaped_char, |s: &str| {
-            Token::EscapedCharacter(
-                s.chars()
-                    .into_iter()
-                    .next()
-                    .expect("The parser returns two characters when it successful"),
-            )
-        }),
-    )))
-    .parse(input)
+    let mut tokens = Vec::new();
+    let mut remaining_input = input.trim();
+
+    let re_re = Regex::new(REDIRECTION_PAT).unwrap();
+    while !remaining_input.is_empty() {
+        if re_re.is_match(remaining_input) {
+            break;
+        }
+
+        let (input, token) = alt((
+            map(space1, |_| Token::Whitespace),
+            map(parse_single_quoted_input, |s: &str| {
+                Token::SingleQuotedArg(s.to_string())
+            }),
+            map(parse_double_quoted_input, |s: &str| {
+                Token::DoubleQuotedArg(s.to_string())
+            }),
+            map(parse_unquoted_input, |s: &str| Token::Arg(s.to_string())),
+            map(parse_escaped_char, |s: &str| {
+                Token::EscapedCharacter(s.chars().next().unwrap())
+            }),
+        ))
+        .parse(remaining_input)?;
+
+        tokens.push(token);
+        remaining_input = input;
+    }
+
+    Ok((remaining_input, tokens))
 }
 
 fn parse_command(input: &str) -> IResult<&str, &str> {
@@ -150,11 +192,21 @@ fn parse_command(input: &str) -> IResult<&str, &str> {
     .parse(input)
 }
 
-pub fn parse_input(input: &str) -> IResult<&str, (&str, Vec<String>)> {
-    let (input, cmd) = parse_command(input)?;
-    let (input, args) = parse_args(input)?;
-    println!("{:?}", args);
-    Ok((input, (cmd, process_tokens(args))))
+pub fn parse_input(input: &str) -> anyhow::Result<(&str, Vec<String>, Option<Redirection>)> {
+    let Ok((input, cmd)) = parse_command(input) else {
+        bail!("Error parsing the command");
+    };
+
+    let Ok((input, args)) = parse_args(input) else {
+        bail!("Error parsing the arguments");
+    };
+
+    let redirection = parse_redirection(input);
+
+    println!("CMD  {}", cmd);
+    println!("ARGS {:?}", args);
+    println!("RED  {:?}", redirection);
+    Ok((cmd, process_args(args), redirection))
 }
 
 #[cfg(test)]
