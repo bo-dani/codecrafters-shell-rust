@@ -11,6 +11,9 @@ use nom::sequence::delimited;
 use nom::sequence::preceded;
 use nom::{IResult, Parser};
 use regex::Regex;
+use std::fmt::Write as FmtWrite;
+use std::fs::File;
+use std::io::{self, Write as IoWrite};
 use std::str::FromStr;
 
 static REDIRECTION_PAT: &str = r"^(\d*)>\s*(.+)";
@@ -26,9 +29,30 @@ enum Token {
 
 #[derive(Debug)]
 pub enum Redirection {
-    Stdin(String),
+    None,
     Stdout(String),
     Stderr(String),
+}
+
+impl FmtWrite for Redirection {
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+        match self {
+            Redirection::Stdout(filename) | Redirection::Stderr(filename) => {
+                let mut file = File::create(filename).map_err(|_| std::fmt::Error)?;
+                file.write_all(s.as_bytes()).map_err(|_| std::fmt::Error)?;
+                file.flush().map_err(|_| std::fmt::Error)?;
+                Ok(())
+            }
+            Redirection::None => {
+                let mut stdout = io::stdout();
+                stdout
+                    .write_all(s.as_bytes())
+                    .map_err(|_| std::fmt::Error)?;
+                stdout.flush().map_err(|_| std::fmt::Error)?;
+                Ok(())
+            }
+        }
+    }
 }
 
 fn escape_unquoted_arg(arg: &str) -> String {
@@ -69,7 +93,6 @@ fn escape_double_quoted_arg(arg: &str) -> String {
 fn process_args(tokens: Vec<Token>) -> Vec<String> {
     let mut p: Vec<String> = Vec::new();
     let mut sb: String = String::new();
-    let mut first_whitespace = true;
     for token in tokens {
         match token {
             Token::SingleQuotedArg(t) => {
@@ -82,20 +105,19 @@ fn process_args(tokens: Vec<Token>) -> Vec<String> {
                 sb.push_str(&escape_unquoted_arg(&t));
             }
             Token::Whitespace => {
-                if !first_whitespace {
-                    p.push(sb.clone());
-                    sb.clear();
-                }
-                first_whitespace = false;
+                p.push(sb.clone());
+                sb.clear();
             }
             Token::EscapedCharacter(c) => {
                 sb.push(c);
             }
         }
     }
+
     if !sb.is_empty() {
         p.push(sb);
     }
+
     return p;
 }
 
@@ -123,15 +145,14 @@ fn parse_escaped_char(input: &str) -> IResult<&str, &str> {
     preceded(tag("\\"), take(1usize)).parse(input)
 }
 
-fn parse_redirection(input: &str) -> Option<Redirection> {
+fn parse_redirection(input: &str) -> Redirection {
     let input = input.trim();
     if input.is_empty() {
-        return None;
+        return Redirection::None;
     }
 
     let re = Regex::new(REDIRECTION_PAT).unwrap();
     if let Some(caps) = re.captures(input) {
-        println!("{:?}", caps);
         let fdn = if caps.get(1).is_some() {
             caps.get(1).unwrap().as_str()
         } else {
@@ -141,14 +162,15 @@ fn parse_redirection(input: &str) -> Option<Redirection> {
         let file = caps.get(2).unwrap().as_str();
         match fdn {
             "2" => {
-                return Some(Redirection::Stderr(file.to_string()));
+                return Redirection::Stderr(file.to_string());
             }
             _ => {
-                return Some(Redirection::Stdout(file.to_string()));
+                return Redirection::Stdout(file.to_string());
             }
         };
     }
-    None
+
+    return Redirection::None;
 }
 
 fn parse_args(input: &str) -> IResult<&str, Vec<Token>> {
@@ -192,7 +214,7 @@ fn parse_command(input: &str) -> IResult<&str, &str> {
     .parse(input)
 }
 
-pub fn parse_input(input: &str) -> anyhow::Result<(&str, Vec<String>, Option<Redirection>)> {
+pub fn parse_input(input: &str) -> anyhow::Result<(&str, Vec<String>, Redirection)> {
     let Ok((input, cmd)) = parse_command(input) else {
         bail!("Error parsing the command");
     };
@@ -202,11 +224,8 @@ pub fn parse_input(input: &str) -> anyhow::Result<(&str, Vec<String>, Option<Red
     };
 
     let redirection = parse_redirection(input);
-
-    println!("CMD  {}", cmd);
-    println!("ARGS {:?}", args);
-    println!("RED  {:?}", redirection);
-    Ok((cmd, process_args(args), redirection))
+    let args = process_args(args);
+    Ok((cmd, args, redirection))
 }
 
 #[cfg(test)]

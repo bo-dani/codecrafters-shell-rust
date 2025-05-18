@@ -1,13 +1,12 @@
 use anyhow::Result;
 use std::env;
+use std::fmt::Write;
 use std::fs;
+use std::io::{self, Write as IoWrite};
 use std::path::PathBuf;
 use std::process::Command;
+use std::process::ExitCode;
 use std::str::FromStr;
-use std::{
-    io::{self, Write},
-    process::ExitCode,
-};
 
 mod parser;
 
@@ -57,23 +56,32 @@ fn split_path() -> Vec<PathBuf> {
 }
 
 /// Handle the shell-builtin `type` command.
-fn handle_type_cmd(args: Vec<String>) {
-    if args.len() != 1 {
-        // TODO Print out error to user.
-        return;
-    }
+fn handle_type_cmd(args: &[String], file: &mut impl Write) {
+    let mut output = String::new();
+    for arg in args {
+        if arg.trim().is_empty() {
+            continue;
+        }
 
-    let arg = &args[0];
-    match CommandType::from_str(&arg) {
-        Ok(CommandType::Builtin) => println!("{} is a shell builtin", &arg),
-        Ok(CommandType::Executable(path)) => println!("{} is {}", &arg, path.to_str().unwrap()),
-        Err(_) => println!("{}: not found", &arg),
+        match CommandType::from_str(&arg) {
+            Ok(CommandType::Builtin) => {
+                output.push_str(format!("{} is a shell builtin\n", &arg).as_str());
+            }
+            Ok(CommandType::Executable(path)) => {
+                output.push_str(format!("{} is {}\n", &arg, path.to_str().unwrap()).as_str());
+            }
+            Err(_) => {
+                output.push_str(format!("{}: not found\n", &arg).as_str());
+            }
+        };
     }
+    file.write_str(output.as_str()).unwrap();
 }
 
 /// Handle the shell-builtin `echo` command.
-fn handle_echo_cmd(args: Vec<String>) {
-    println!("{}", args.join(" "));
+fn handle_echo_cmd(args: &[String], file: &mut impl Write) {
+    file.write_str(format!("{}\n", args.join(" ")).as_str())
+        .unwrap();
 }
 
 /// Handle the shell-builtin `exit` command.
@@ -90,22 +98,22 @@ fn handle_exit_cmd(args: Vec<String>) -> ExitCode {
 fn main() -> ExitCode {
     loop {
         print!("$ ");
-        io::stdout().flush().unwrap();
+        std::io::stdout().flush().unwrap();
 
         // Wait for user input
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
 
-        if let Ok((cmd, args, redirection)) = parser::parse_input(&input) {
+        if let Ok((cmd, args, mut redirection)) = parser::parse_input(&input) {
             match cmd {
                 "exit" => {
                     return handle_exit_cmd(args);
                 }
                 "type" => {
-                    handle_type_cmd(args);
+                    handle_type_cmd(args.as_slice(), &mut redirection);
                 }
                 "echo" => {
-                    handle_echo_cmd(args);
+                    handle_echo_cmd(args.as_slice(), &mut redirection);
                 }
                 "" => {
                     continue;
