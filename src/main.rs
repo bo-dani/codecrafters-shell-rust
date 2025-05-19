@@ -1,9 +1,9 @@
 use anyhow::Result;
 use parser::Redirection;
 use std::env;
-use std::fmt::Write;
 use std::fs::{self, File};
 use std::io::{self, Write as IoWrite};
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::process::ExitCode;
@@ -57,7 +57,7 @@ fn split_path() -> Vec<PathBuf> {
 }
 
 /// Handle the shell-builtin `type` command.
-fn handle_type_cmd(args: &[String], file: &mut impl Write) {
+fn handle_type_cmd(args: &[String], redirection: Redirection) {
     let mut output = String::new();
     for arg in args {
         if arg.trim().is_empty() {
@@ -76,13 +76,48 @@ fn handle_type_cmd(args: &[String], file: &mut impl Write) {
             }
         };
     }
-    file.write_str(output.as_str()).unwrap();
+
+    match redirection {
+        Redirection::None | Redirection::Stderr(_) => {
+            println!("{}", output);
+        }
+        Redirection::Stdout(filename) => {
+            if let Ok(mut file) = File::create(filename) {
+                file.write(output.as_bytes()).unwrap();
+                file.flush().unwrap();
+            }
+        }
+    }
 }
 
 /// Handle the shell-builtin `echo` command.
-fn handle_echo_cmd(args: &[String], file: &mut impl Write) {
-    file.write_str(format!("{}\n", args.join(" ")).as_str())
-        .unwrap();
+fn handle_echo_cmd(args: &[String], redirection: Redirection) {
+    let binding = format!("{}\n", args.join(" "));
+    let echo = binding.as_str();
+    match redirection {
+        Redirection::None => {
+            println!("{}", echo);
+        }
+        Redirection::Stderr(filename) => {
+            let path = Path::new(&filename);
+            if let Some(parent) = path.parent() {
+                if !parent.exists() {
+                    println!(
+                        "Failed to read file (\"{}\"): open {}: no such file or directory",
+                        filename, filename
+                    );
+                } else {
+                    println!("{}", echo);
+                }
+            }
+        }
+        Redirection::Stdout(filename) => {
+            if let Ok(mut file) = File::create(filename) {
+                file.write(echo.as_bytes()).unwrap();
+                file.flush().unwrap();
+            }
+        }
+    }
 }
 
 /// Handle the shell-builtin `exit` command.
@@ -124,16 +159,16 @@ fn main() -> ExitCode {
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
 
-        if let Ok((cmd, args, mut redirection)) = parser::parse_input(&input) {
+        if let Ok((cmd, args, redirection)) = parser::parse_input(&input) {
             match cmd {
                 "exit" => {
                     return handle_exit_cmd(args);
                 }
                 "type" => {
-                    handle_type_cmd(args.as_slice(), &mut redirection);
+                    handle_type_cmd(args.as_slice(), redirection);
                 }
                 "echo" => {
-                    handle_echo_cmd(args.as_slice(), &mut redirection);
+                    handle_echo_cmd(args.as_slice(), redirection);
                 }
                 "" => {
                     continue;
