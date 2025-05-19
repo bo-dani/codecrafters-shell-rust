@@ -1,7 +1,8 @@
 use anyhow::Result;
+use parser::Redirection;
 use std::env;
 use std::fmt::Write;
-use std::fs;
+use std::fs::{self, File};
 use std::io::{self, Write as IoWrite};
 use std::path::PathBuf;
 use std::process::Command;
@@ -95,6 +96,25 @@ fn handle_exit_cmd(args: Vec<String>) -> ExitCode {
     }
 }
 
+fn handle_executable_cmd(cmd: &str, args: Vec<String>, redirection: Redirection) {
+    let mut binding = Command::new(cmd);
+    let mut command = binding.args(args);
+    match redirection {
+        Redirection::None => {}
+        Redirection::Stdout(filename) => {
+            if let Ok(file) = File::create(filename) {
+                command = command.stdout(file);
+            }
+        }
+        Redirection::Stderr(filename) => {
+            if let Ok(file) = File::create(filename) {
+                command = command.stderr(file);
+            }
+        }
+    }
+    command.status().expect("failed to exceute process");
+}
+
 fn main() -> ExitCode {
     loop {
         print!("$ ");
@@ -120,10 +140,7 @@ fn main() -> ExitCode {
                 }
                 _ => {
                     if let Ok(Some(_)) = get_executable_path(cmd) {
-                        Command::new(cmd)
-                            .args(args)
-                            .status()
-                            .expect("failed to execute process");
+                        handle_executable_cmd(cmd, args, redirection);
                     } else {
                         println!("{}: command not found", cmd);
                     }
