@@ -30,12 +30,26 @@ pub fn handle_executable_cmd(cmd: &str, args: Vec<String>, redirection: Redirect
     match redirection {
         Redirection::None => {}
         Redirection::Stdout(filename) => {
-            if let Ok(file) = std::fs::File::create(filename) {
+            fs::mkdir(&filename).unwrap();
+            if let Ok(file) = fs::open(&filename, false) {
+                command = command.stdout(file);
+            }
+        }
+        Redirection::StdoutAppend(filename) => {
+            fs::mkdir(&filename).unwrap();
+            if let Ok(file) = fs::open(&filename, true) {
                 command = command.stdout(file);
             }
         }
         Redirection::Stderr(filename) => {
-            if let Ok(file) = std::fs::File::create(filename) {
+            fs::mkdir(&filename).unwrap();
+            if let Ok(file) = fs::open(&filename, false) {
+                command = command.stderr(file);
+            }
+        }
+        Redirection::StderrAppend(filename) => {
+            fs::mkdir(&filename).unwrap();
+            if let Ok(file) = fs::open(&filename, true) {
                 command = command.stderr(file);
             }
         }

@@ -1,14 +1,16 @@
+use crate::fs;
+
 use super::command::CommandType;
 use super::parser::Redirection;
-use std::io::Write;
-use std::path::Path;
+use std::fmt::Write as FmtWrite;
+use std::io::Write as IoWrite;
 use std::process::ExitCode;
 use std::str::FromStr;
 
 pub static BUILTIN_CMDS: &'static [&'static str] = &["echo", "exit", "type"];
 
 /// Handle the shell-builtin `type` command.
-pub fn handle_type_cmd(args: &[String], redirection: Redirection) {
+pub fn handle_type_cmd(args: &[String], mut redirection: Redirection) {
     let mut output = String::new();
     for arg in args {
         if arg.trim().is_empty() {
@@ -28,16 +30,8 @@ pub fn handle_type_cmd(args: &[String], redirection: Redirection) {
         };
     }
 
-    match redirection {
-        Redirection::None | Redirection::Stderr(_) => {
-            print!("{}", output);
-        }
-        Redirection::Stdout(filename) => {
-            if let Ok(mut file) = std::fs::File::create(filename) {
-                file.write(output.as_bytes()).unwrap();
-                file.flush().unwrap();
-            }
-        }
+    if let Err(e) = redirection.write_str(&output) {
+        println!("{}", e);
     }
 }
 
@@ -49,25 +43,31 @@ pub fn handle_echo_cmd(args: &[String], redirection: Redirection) {
         Redirection::None => {
             print!("{}", echo);
         }
-        Redirection::Stderr(filename) => {
-            let path = Path::new(&filename);
-            if let Some(parent) = path.parent() {
-                if !parent.exists() {
-                    std::fs::create_dir_all(parent).unwrap();
-                }
-                match std::fs::File::create(&filename) {
-                    Ok(_) => print!("{}", echo),
-                    Err(e) => println!("error creating file: {}", e),
-                }
+        Redirection::Stderr(filename) | Redirection::StderrAppend(filename) => {
+            fs::mkdir(&filename).unwrap();
+            match fs::open(&filename, false) {
+                Ok(_) => print!("{}", echo),
+                Err(e) => println!("error creating file: {}", e),
             }
         }
-        Redirection::Stdout(filename) => match std::fs::File::create(filename) {
-            Ok(mut file) => {
-                file.write(echo.as_bytes()).unwrap();
-                file.flush().unwrap();
+        Redirection::Stdout(filename) => {
+            fs::mkdir(&filename).unwrap();
+            match fs::open(&filename, false) {
+                Ok(mut file) => {
+                    file.write(echo.as_bytes()).unwrap();
+                }
+                Err(e) => println!("error creating file: {}", e),
             }
-            Err(e) => println!("error creating file: {}", e),
-        },
+        }
+        Redirection::StdoutAppend(filename) => {
+            fs::mkdir(&filename).unwrap();
+            match fs::open(&filename, true) {
+                Ok(mut file) => {
+                    file.write(echo.as_bytes()).unwrap();
+                }
+                Err(e) => println!("error creating file: {}", e),
+            }
+        }
     }
 }
 

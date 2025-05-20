@@ -12,11 +12,13 @@ use nom::sequence::preceded;
 use nom::{IResult, Parser};
 use regex::Regex;
 use std::fmt::Write as FmtWrite;
-use std::fs::File;
-use std::io::{self, Write as IoWrite};
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::str::FromStr;
 
-static REDIRECTION_PAT: &str = r"^(\d*)>\s*(.+)";
+use crate::fs;
+
+static REDIRECTION_PAT: &str = r"^(\d*)(>{1,2})\s*(.+)";
 
 #[derive(Debug)]
 enum Token {
@@ -32,19 +34,49 @@ pub enum Redirection {
     None,
     Stdout(String),
     Stderr(String),
+    StdoutAppend(String),
+    StderrAppend(String),
 }
 
 impl FmtWrite for Redirection {
     fn write_str(&mut self, s: &str) -> std::fmt::Result {
         match self {
             Redirection::Stdout(filename) | Redirection::Stderr(filename) => {
-                let mut file = File::create(filename).map_err(|_| std::fmt::Error)?;
-                file.write_all(s.as_bytes()).map_err(|_| std::fmt::Error)?;
-                file.flush().map_err(|_| std::fmt::Error)?;
+                fs::mkdir(filename).unwrap();
+                match OpenOptions::new().write(true).create(true).open(filename) {
+                    Ok(mut file) => {
+                        if let Err(e) = file.write_all(s.as_bytes()) {
+                            println!("Writing to file failed: {}", e);
+                        }
+                        if let Err(e) = file.flush() {
+                            println!("Writing to file failed {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        println!("Error opening file: {}", e);
+                    }
+                }
+                Ok(())
+            }
+            Redirection::StdoutAppend(filename) | Redirection::StderrAppend(filename) => {
+                fs::mkdir(filename).unwrap();
+                match OpenOptions::new().create(true).append(true).open(filename) {
+                    Ok(mut file) => {
+                        if let Err(e) = file.write_all(s.as_bytes()) {
+                            println!("Writing to file failed: {}", e);
+                        }
+                        if let Err(e) = file.flush() {
+                            println!("Writing to file failed {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        println!("Error opening file: {}", e);
+                    }
+                }
                 Ok(())
             }
             Redirection::None => {
-                let mut stdout = io::stdout();
+                let mut stdout = std::io::stdout();
                 stdout
                     .write_all(s.as_bytes())
                     .map_err(|_| std::fmt::Error)?;
@@ -159,13 +191,22 @@ fn parse_redirection(input: &str) -> Redirection {
             "1"
         };
 
-        let file = caps.get(2).unwrap().as_str();
+        let append = caps.get(2).unwrap().as_str().len() == 2;
+        let file = caps.get(3).unwrap().as_str();
         match fdn {
             "2" => {
-                return Redirection::Stderr(file.to_string());
+                return if !append {
+                    Redirection::Stderr(file.to_string())
+                } else {
+                    Redirection::StderrAppend(file.to_string())
+                }
             }
             _ => {
-                return Redirection::Stdout(file.to_string());
+                return if !append {
+                    Redirection::Stdout(file.to_string())
+                } else {
+                    Redirection::StdoutAppend(file.to_string())
+                }
             }
         };
     }

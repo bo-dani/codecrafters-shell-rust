@@ -1,6 +1,25 @@
 use anyhow::Result;
 use std::env;
-use std::path::PathBuf;
+use std::fs::{File, OpenOptions};
+use std::path::{Path, PathBuf};
+
+pub fn open(filename: &str, append: bool) -> Result<File> {
+    let file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(append)
+        .open(filename)?;
+    Ok(file)
+}
+
+pub fn mkdir(path: &str) -> Result<()> {
+    let path = Path::new(path);
+    let parent = path.parent().unwrap();
+    if !parent.exists() {
+        std::fs::create_dir_all(parent)?;
+    }
+    Ok(())
+}
 
 pub fn get_executable_path(cmd: &str) -> Result<Option<PathBuf>> {
     for path in split_path() {
