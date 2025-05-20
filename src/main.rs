@@ -79,7 +79,7 @@ fn handle_type_cmd(args: &[String], redirection: Redirection) {
 
     match redirection {
         Redirection::None | Redirection::Stderr(_) => {
-            println!("{}", output);
+            print!("{}", output);
         }
         Redirection::Stdout(filename) => {
             if let Ok(mut file) = File::create(filename) {
@@ -96,27 +96,27 @@ fn handle_echo_cmd(args: &[String], redirection: Redirection) {
     let echo = binding.as_str();
     match redirection {
         Redirection::None => {
-            println!("{}", echo);
+            print!("{}", echo);
         }
         Redirection::Stderr(filename) => {
             let path = Path::new(&filename);
             if let Some(parent) = path.parent() {
                 if !parent.exists() {
-                    println!(
-                        "Failed to read file (\"{}\"): open {}: no such file or directory",
-                        filename, filename
-                    );
-                } else {
-                    println!("{}", echo);
+                    std::fs::create_dir_all(parent).unwrap();
+                }
+                match File::create(&filename) {
+                    Ok(_) => print!("{}", echo),
+                    Err(e) => println!("error creating file: {}", e),
                 }
             }
         }
-        Redirection::Stdout(filename) => {
-            if let Ok(mut file) = File::create(filename) {
+        Redirection::Stdout(filename) => match File::create(filename) {
+            Ok(mut file) => {
                 file.write(echo.as_bytes()).unwrap();
                 file.flush().unwrap();
             }
-        }
+            Err(e) => println!("error creating file: {}", e),
+        },
     }
 }
 
