@@ -1,19 +1,41 @@
-use std::io::{self, Write as IoWrite};
+use crate::autocomplete::Autocompleter;
+use crate::builtin::BUILTIN_CMDS;
+use rustyline::error::ReadlineError;
+use rustyline::{Config, Editor};
+use std::io::Write;
 use std::process::ExitCode;
 
+mod autocomplete;
 mod builtin;
 mod command;
 mod fs;
 mod parser;
 
+static PROMPT: &'static str = "> ";
+
 fn main() -> ExitCode {
+    let config = Config::builder()
+        .history_ignore_space(true)
+        .completion_type(rustyline::CompletionType::List)
+        .edit_mode(rustyline::EditMode::Vi)
+        .build();
+    let autocomplete = Autocompleter::new(BUILTIN_CMDS);
+    let mut editor: Editor<Autocompleter, _> = Editor::with_config(config).unwrap();
+    editor.set_helper(Some(autocomplete));
+
     loop {
-        print!("$ ");
         std::io::stdout().flush().unwrap();
 
         // Wait for user input
-        let mut input = String::new();
-        io::stdin().read_line(&mut input).unwrap();
+        let input = match editor.readline(PROMPT) {
+            Ok(line) => line,
+            Err(e) => match e {
+                ReadlineError::Interrupted => {
+                    return ExitCode::FAILURE;
+                }
+                _ => continue,
+            },
+        };
 
         if let Ok((cmd, args, redirection)) = parser::parse_input(&input) {
             match cmd {
