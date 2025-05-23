@@ -11,7 +11,7 @@ mod command;
 mod fs;
 mod parser;
 
-static PROMPT: &'static str = "> ";
+static PROMPT: &'static str = "$ ";
 
 fn main() -> ExitCode {
     let config = Config::builder()
