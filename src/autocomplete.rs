@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use rustyline::completion::{extract_word, Completer, Pair};
 use rustyline::error::ReadlineError;
 use rustyline::Context;
@@ -55,6 +56,7 @@ impl Autocompleter {
                     None
                 }
             })
+            .sorted_by(|a, b| Ord::cmp(&a.display, &b.display))
             .collect();
         Ok((start, matches))
     }
