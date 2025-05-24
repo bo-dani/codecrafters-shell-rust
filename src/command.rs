@@ -56,3 +56,26 @@ pub fn handle_executable_cmd(cmd: &str, args: Vec<String>, redirection: Redirect
     }
     command.status().expect("failed to exceute process");
 }
+
+pub fn get_executables() -> Vec<String> {
+    let mut cmds = Vec::new();
+    for path in fs::split_path() {
+        if !std::fs::exists(&path).unwrap() {
+            continue;
+        }
+        for entry in std::fs::read_dir(&path).unwrap() {
+            if let Ok(entry) = entry {
+                cmds.push(
+                    entry
+                        .path()
+                        .file_name()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .to_string(),
+                );
+            }
+        }
+    }
+    return cmds;
+}

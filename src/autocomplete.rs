@@ -27,7 +27,7 @@ pub struct Autocompleter {
 }
 
 impl Autocompleter {
-    pub fn new(cmds: &[&str]) -> Self {
+    pub fn new(cmds: &[String]) -> Self {
         let mut map = HashSet::new();
         for cmd in cmds {
             map.insert(Command::new(cmd, ""));

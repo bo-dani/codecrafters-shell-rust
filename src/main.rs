@@ -19,7 +19,14 @@ fn main() -> ExitCode {
         .completion_type(rustyline::CompletionType::List)
         .edit_mode(rustyline::EditMode::Vi)
         .build();
-    let autocomplete = Autocompleter::new(BUILTIN_CMDS);
+
+    let mut cmds = Vec::new();
+    cmds.extend(command::get_executables());
+    for builtin in BUILTIN_CMDS {
+        cmds.push(builtin.to_string());
+    }
+
+    let autocomplete = Autocompleter::new(cmds.as_slice());
     let mut editor: Editor<Autocompleter, _> = Editor::with_config(config).unwrap();
     editor.set_helper(Some(autocomplete));
 
